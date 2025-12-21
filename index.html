@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Photoscan Helper</title>
+    
+    <!-- Styles -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="styles/main.css">
+    
+    <!-- OpenCV -->
+    <script async src="https://docs.opencv.org/4.x/opencv.js" type="text/javascript"></script>
+    
+    <!-- Libraries (UMD) -->
+    <script crossorigin src="https://unpkg.com/react@18.2.0/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18.2.0/umd/react-dom.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/jszip@3.10.1/dist/jszip.min.js"></script>
+    
+    <!-- Lucide Icons -->
+    <script crossorigin src="https://unpkg.com/lucide@0.263.1/dist/umd/lucide.min.js"></script>
+    <script crossorigin src="https://unpkg.com/lucide-react@0.263.1/dist/umd/lucide-react.min.js"></script>
+    
+    <!-- Babel -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+</head>
+<body class="bg-slate-50 text-slate-900 min-h-screen font-sans">
+    
+    <div id="loading" class="loading-overlay">
+        <div class="spinner"></div>
+        <div class="text-sm font-bold uppercase tracking-widest">Initializing App...</div>
+    </div>
+
+    <div id="root"></div>
+
+    <!-- 1. OpenCV Service (Standard JS) -->
+    <script src="src/services/opencvService.js"></script>
+
+    <!-- 2. Components (Babel/JSX) -->
+    <script type="text/babel" data-presets="react" src="src/components/ScannerEditor.js"></script>
+    <script type="text/babel" data-presets="react" src="src/components/ResultView.js"></script>
+    <script type="text/babel" data-presets="react" src="src/components/App.js"></script>
+    
+    <!-- 3. Main Entry -->
+    <script type="text/babel" data-presets="react" src="src/main.js"></script>
+</body>
+</html>
