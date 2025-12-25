@@ -9,6 +9,8 @@ window.ScannerEditor = ({
     initialMode = 'SINGLE', 
     scale,
     onScaleChange,
+    initialRotation = 0,
+    onRotationChange,
     onProcess, 
     onCancel 
 }) => {
@@ -21,7 +23,7 @@ window.ScannerEditor = ({
     const [points, setPoints] = useState(initialPoints && initialPoints.length > 0 ? initialPoints : []);
     const [mode, setMode] = useState(initialMode);
     const [imgElement, setImgElement] = useState(null);
-    const [rotation, setRotation] = useState(0);
+    const [rotation, setRotation] = useState(initialRotation || 0);
     
     const [draggingIdx, setDraggingIdx] = useState(null);
 
@@ -56,6 +58,12 @@ window.ScannerEditor = ({
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
     }, [onProcess, points, mode, rotation]);
+
+    useEffect(() => {
+        if (typeof onRotationChange === 'function') {
+            onRotationChange(rotation);
+        }
+    }, [rotation]);
 
     const getRotatedDimensions = (w, h, rot) => {
         const r = (rot % 360 + 360) % 360;

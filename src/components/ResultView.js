@@ -1,7 +1,17 @@
 // ---------------------------------------------------------
 // ResultView Component
 // ---------------------------------------------------------
-const ControlPanel = ({ config, onChange, label }) => {
+const DEFAULT_CONFIG = {
+    blockSize: 41,
+    offset: 12,
+    useClahe: true,
+    denoise: 1,
+    colorMode: 'BW',
+    sharpening: 1.0
+};
+
+const ControlPanel = ({ config, onChange, label, onReset }) => {
+    const mode = config.colorMode || (config.isGrayscale ? 'GRAY' : 'BW');
     return (
         <div className="bg-white p-5 rounded-3xl shadow-sm border border-slate-200 mb-4 transition-all">
         <div className="flex items-center justify-between mb-4">
@@ -9,12 +19,21 @@ const ControlPanel = ({ config, onChange, label }) => {
             <span className="w-2 h-2 bg-blue-600 rounded-full animate-pulse"></span>
             Enhance {label}
             </h4>
-            <button 
-            onClick={() => onChange({...config, isGrayscale: !config.isGrayscale})}
-            className={`px-3 py-1.5 rounded-full text-[9px] font-black uppercase tracking-wider transition-all border ${config.isGrayscale ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-500 border-slate-200'}`}
-            >
-            {config.isGrayscale ? 'Mode: Grayscale' : 'Mode: B&W Scan'}
-            </button>
+            <div className="flex items-center gap-2">
+                <div className="bg-slate-100 p-1 rounded-xl border border-slate-200">
+                    {[
+                        { key: 'BW', label: 'B&W' },
+                        { key: 'GRAY', label: 'Grayscale' },
+                        { key: 'COLOR', label: 'Color' }
+                    ].map(m => (
+                        <button key={m.key}
+                            onClick={() => onChange({ ...config, colorMode: m.key })}
+                            className={`px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-wider transition-all ${mode === m.key ? 'bg-white shadow-sm text-blue-600' : 'text-slate-500 hover:text-slate-700'}`}
+                        >{m.label}</button>
+                    ))}
+                </div>
+                <button onClick={onReset} className="px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-wider text-slate-500 hover:text-slate-700 border border-slate-200 hover:border-slate-300">Reset</button>
+            </div>
         </div>
 
         <div className="grid grid-cols-1 gap-4">
@@ -29,7 +48,7 @@ const ControlPanel = ({ config, onChange, label }) => {
             </div>
 
             <div className="grid grid-cols-2 gap-4">
-            <div className={config.isGrayscale ? 'opacity-30 pointer-events-none' : ''}>
+            <div className={(config.colorMode || (config.isGrayscale ? 'GRAY' : 'BW')) !== 'BW' ? 'opacity-30 pointer-events-none' : ''}>
                 <div className="flex items-center text-[10px] font-black uppercase text-slate-500 mb-2">
                 <span>Threshold</span>
                 <span className="ml-auto text-blue-600">{config.blockSize}</span>
@@ -38,7 +57,7 @@ const ControlPanel = ({ config, onChange, label }) => {
                 onChange={e => onChange({...config, blockSize: parseInt(e.target.value)})}
                 className="w-full h-1.5 bg-slate-100 rounded-lg appearance-none cursor-pointer accent-blue-600" />
             </div>
-            <div className={config.isGrayscale ? 'opacity-30 pointer-events-none' : ''}>
+            <div className={(config.colorMode || (config.isGrayscale ? 'GRAY' : 'BW')) !== 'BW' ? 'opacity-30 pointer-events-none' : ''}>
                 <div className="flex items-center text-[10px] font-black uppercase text-slate-500 mb-2">
                 <span>Sensitivity</span>
                 <span className="ml-auto text-blue-600">{config.offset}</span>
@@ -161,6 +180,13 @@ window.ResultView = ({
         setConfigs(nextConfigs);
     };
 
+    const handleReset = (index) => {
+        const nextConfigs = [...configs];
+        const keepRotation = nextConfigs[index]?.rotation ?? 0;
+        nextConfigs[index] = { ...DEFAULT_CONFIG, rotation: keepRotation };
+        setConfigs(nextConfigs);
+    };
+
     return (
         <div className="w-full max-w-7xl mx-auto space-y-8 animate-in fade-in zoom-in duration-500 pb-12">
         <div className={`grid gap-8 ${currentResults.length > 1 ? 'lg:grid-cols-2' : 'max-w-2xl mx-auto'}`}>
@@ -174,6 +200,7 @@ window.ResultView = ({
                     next[i] = c;
                     setConfigs(next);
                 }}
+                onReset={() => handleReset(i)}
                 />
                 <ImageDisplay 
                 url={url} 

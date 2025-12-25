@@ -1,7 +1,7 @@
 // ---------------------------------------------------------
 // App Component
 // ---------------------------------------------------------
-const BATCH_LIMIT = 30;
+const BATCH_LIMIT = 50;
 
 window.App = () => {
     const { useState, useEffect, useRef, useCallback } = window.React;
@@ -35,8 +35,8 @@ window.App = () => {
     const [lastUsedPoints, setLastUsedPoints] = useState([]);
     const [lastUsedMode, setLastUsedMode] = useState('SINGLE');
     const [lastUsedConfigs, setLastUsedConfigs] = useState([
-        { blockSize: 41, offset: 12, useClahe: true, denoise: 1, isGrayscale: false, sharpening: 1.0, rotation: 0 },
-        { blockSize: 41, offset: 12, useClahe: true, denoise: 1, isGrayscale: false, sharpening: 1.0, rotation: 0 }
+        { blockSize: 41, offset: 12, useClahe: true, denoise: 1, colorMode: 'BW', sharpening: 1.0, rotation: 0 },
+        { blockSize: 41, offset: 12, useClahe: true, denoise: 1, colorMode: 'BW', sharpening: 1.0, rotation: 0 }
     ]);
 
     useEffect(() => {
@@ -315,7 +315,7 @@ window.App = () => {
                     </div>
                     <h2 className="text-4xl font-black text-slate-900 mb-6 tracking-tight">Quick Document Helper</h2>
                     <p className="text-slate-500 mb-6 text-lg font-medium leading-relaxed">Drop your photos here to help flatten and clean them up for reading or sharing.</p>
-                    <p className="text-slate-400 text-xs font-black uppercase tracking-widest mb-12 italic opacity-60">(Batch limit: 30 images per session)</p>
+                            <p className="text-slate-400 text-xs font-black uppercase tracking-widest mb-12 italic opacity-60">(Batch limit: {BATCH_LIMIT} images per session)</p>
                     <input type="file" ref={fileInputRef} onChange={handleFileChange} accept="image/*" multiple className="hidden" />
                     <button onClick={() => fileInputRef.current?.click()} className="w-full bg-blue-600 text-white font-black py-6 rounded-3xl shadow-2xl shadow-blue-200 hover:bg-blue-700 transition-all text-xl tracking-tight">Open Photos</button>
                 </div>
@@ -329,6 +329,8 @@ window.App = () => {
                 initialMode={currentImage.mode}
                 scale={editorScale}
                 onScaleChange={setEditorScale}
+                initialRotation={(currentImage.configs && currentImage.configs[0] && typeof currentImage.configs[0].rotation === 'number') ? currentImage.configs[0].rotation : (lastUsedConfigs[0]?.rotation || 0)}
+                onRotationChange={(rot) => setLastUsedConfigs(prev => prev.map(c => ({ ...c, rotation: rot })))}
                 onProcess={handleProcess} 
                 onCancel={requestAbortSession} 
                 />
