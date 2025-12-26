@@ -2,6 +2,21 @@
 // App Component
 // ---------------------------------------------------------
 const BATCH_LIMIT = 50;
+const DEFAULT_PRESET = {
+    points: [],
+    mode: 'SINGLE',
+    rotation: 0,
+    configs: [
+        { blockSize: 41, offset: 12, useClahe: true, denoise: 1, colorMode: 'BW', sharpening: 1.0, rotation: 0 }
+    ]
+};
+
+const clonePreset = (p) => ({
+    points: (p?.points || []).map(pt => ({ ...pt })),
+    mode: p?.mode || 'SINGLE',
+    rotation: typeof p?.rotation === 'number' ? p.rotation : 0,
+    configs: (p?.configs || DEFAULT_PRESET.configs).map(c => ({ ...c }))
+});
 
 window.App = () => {
     const { useState, useEffect, useRef, useCallback } = window.React;
@@ -30,6 +45,16 @@ window.App = () => {
     // Zoom States
     const [editorScale, setEditorScale] = useState(1);
 
+    // Toast notifications
+    const [toast, setToast] = useState(null); // { text: string } | null
+    const showToast = useCallback((text) => {
+        setToast({ text });
+        setTimeout(() => setToast(null), 1800);
+    }, []);
+
+    // Editor flash key to highlight corners when a preset is applied
+    const [presetFlashKey, setPresetFlashKey] = useState(0);
+
     const fileInputRef = useRef(null);
 
     const [lastUsedPoints, setLastUsedPoints] = useState([]);
@@ -38,6 +63,12 @@ window.App = () => {
         { blockSize: 41, offset: 12, useClahe: true, denoise: 1, colorMode: 'BW', sharpening: 1.0, rotation: 0 },
         { blockSize: 41, offset: 12, useClahe: true, denoise: 1, colorMode: 'BW', sharpening: 1.0, rotation: 0 }
     ]);
+
+    // Manual Presets (two slots): saved and applied manually, independent of last-used state
+    const [manualPresets, setManualPresets] = useState({
+        P1: null,
+        P2: null
+    });
 
     useEffect(() => {
         // HIDE LOADER WHEN APP MOUNTS
@@ -54,11 +85,75 @@ window.App = () => {
                 }
             }, 200);
         }
+
+        // Load manual presets from localStorage
+        try {
+            const rawManual = localStorage.getItem('photoscan_manualPresets');
+            if (rawManual) {
+                const parsed = JSON.parse(rawManual);
+                if (parsed && (parsed.P1 || parsed.P2)) {
+                    setManualPresets({
+                        P1: parsed.P1 ? clonePreset(parsed.P1) : null,
+                        P2: parsed.P2 ? clonePreset(parsed.P2) : null
+                    });
+                }
+            }
+        } catch {}
     }, []);
+
+    const persistManualPresets = (next) => {
+        setManualPresets(next);
+        try { localStorage.setItem('photoscan_manualPresets', JSON.stringify(next)); } catch {}
+    };
+
+    const saveManualPreset = (slot) => {
+        const item = queue[currentIndex];
+        if (!item) return;
+        const rot = (item.configs && item.configs[0] && typeof item.configs[0].rotation === 'number') ? item.configs[0].rotation : 0;
+        const preset = {
+            points: (item.points || []).map(p => ({...p})),
+            mode: item.mode,
+            rotation: rot,
+            configs: (item.configs || []).map(c => ({...c}))
+        };
+        const next = { ...manualPresets, [slot]: preset };
+        persistManualPresets(next);
+        showToast(slot === 'P1' ? 'Preset One saved' : 'Preset Two saved');
+    };
+
+    const applyManualPreset = (slot) => {
+        const preset = manualPresets[slot];
+        const img = queue[currentIndex];
+        if (!preset || !img) return;
+        const nextQueue = [...queue];
+        const updated = {
+            ...img,
+            points: preset.points && preset.points.length > 0 ? preset.points.map(p => ({...p})) : (lastUsedPoints || []),
+            mode: preset.mode || lastUsedMode,
+            configs: preset.configs && preset.configs.length > 0 ? preset.configs.map(c => ({...c})) : lastUsedConfigs.map(c => ({...c})),
+            results: []
+        };
+        nextQueue[currentIndex] = updated;
+        setQueue(nextQueue);
+        setLastUsedPoints(updated.points);
+        setLastUsedMode(updated.mode);
+        setLastUsedConfigs(updated.configs);
+        setStep('EDIT');
+        setPresetFlashKey((k) => k + 1);
+        showToast(slot === 'P1' ? 'Preset One applied' : 'Preset Two applied');
+    };
+    
+    const clearManualPreset = (slot) => {
+        const next = { ...manualPresets, [slot]: null };
+        persistManualPresets(next);
+        showToast(slot === 'P1' ? 'Preset One cleared' : 'Preset Two cleared');
+    };
+    // Preset persistence removed
 
     const handleFiles = (files) => {
         const limitedFiles = files.slice(0, BATCH_LIMIT);
-        
+        // Use last-used settings only
+
         const readerPromises = limitedFiles.map((file) => {
         return new Promise((resolve) => {
             const reader = new FileReader();
@@ -67,7 +162,7 @@ window.App = () => {
                 id: Math.random().toString(36).substr(2, 9),
                 src: event.target?.result,
                 name: file.name.split('.')[0],
-                points: [...lastUsedPoints],
+                points: lastUsedPoints.length > 0 ? lastUsedPoints.map(p => ({...p})) : [],
                 mode: lastUsedMode,
                 configs: lastUsedConfigs.map(c => ({ ...c })),
                 results: []
@@ -105,6 +200,8 @@ window.App = () => {
         const currentConfigs = lastUsedConfigs.map(c => ({...c, rotation: rotation}));
         setLastUsedConfigs(currentConfigs);
 
+        // Preset auto-save removed
+
         try {
         const img = new Image();
         img.onload = async () => {
@@ -134,6 +231,7 @@ window.App = () => {
         updatedQueue[currentIndex] = { ...updatedQueue[currentIndex], results: newResults, configs: newConfigs };
         setQueue(updatedQueue);
         setLastUsedConfigs(newConfigs);
+        // Preset auto-save removed
     };
 
     const performBatchExport = async (targetSize) => {
@@ -211,9 +309,8 @@ window.App = () => {
         if (currentIndex < queue.length - 1) {
         const nextIdx = currentIndex + 1;
         const nextQueue = [...queue];
-        
         if (nextQueue[nextIdx].points.length === 0) {
-            nextQueue[nextIdx].points = [...lastUsedPoints];
+            nextQueue[nextIdx].points = lastUsedPoints.length > 0 ? lastUsedPoints.map(p => ({...p})) : nextQueue[nextIdx].points;
             nextQueue[nextIdx].mode = lastUsedMode;
             nextQueue[nextIdx].configs = lastUsedConfigs.map(c => ({ ...c }));
             setQueue(nextQueue);
@@ -225,6 +322,21 @@ window.App = () => {
         setShowExportSettings(true);
         }
     }, [currentIndex, queue, lastUsedPoints, lastUsedMode, lastUsedConfigs]);
+
+    const handleSavePreset = (points, mode, rotation) => {
+        const baseConfigs = lastUsedConfigs.map(c => ({...c}));
+        const configsWithRotation = baseConfigs.map(c => ({...c, rotation}));
+        const next = {
+            ...presets,
+            [activePreset]: {
+                points: points.map(p => ({...p})),
+                mode,
+                rotation,
+                configs: configsWithRotation
+            }
+        };
+        persistPresets(next);
+    };
 
     const handleOpenExport = () => {
         setShowExportSettings(true);
@@ -271,17 +383,29 @@ window.App = () => {
             </div>
             
             <div className="flex items-center gap-4 flex-wrap">
+                {/* Preview size controls removed; choose size at export time */}
+
+                {/* Manual Presets: Save/Apply/Clear for two slots */}
                 <div className="flex items-center gap-2 bg-slate-100 p-1.5 rounded-2xl border border-slate-200">
-                <span className="px-3 text-[9px] font-black uppercase text-slate-400 tracking-widest">Preview Size:</span>
-                {['NONE', 'A3', 'A4', 'A5', 'A6'].map(sz => (
-                    <button 
-                    key={sz} 
-                    onClick={() => setNormalization(sz)}
-                    className={`px-3 py-1.5 rounded-xl text-[10px] font-black uppercase transition-all ${normalization === sz ? 'bg-white shadow-md text-blue-600' : 'text-slate-500 hover:text-slate-800'}`}
-                    >
-                    {sz === 'NONE' ? 'Original' : sz}
-                    </button>
-                ))}
+                    <span className="px-3 text-[9px] font-black uppercase text-slate-400 tracking-widest">Manual Presets:</span>
+                    {[{key:'P1', label:'One'}, {key:'P2', label:'Two'}].map(ps => (
+                        <div key={ps.key} className="flex items-center gap-1">
+                            <button
+                                onClick={() => saveManualPreset(ps.key)}
+                                className="px-3 py-1.5 rounded-xl text-[10px] font-black uppercase transition-all bg-white shadow-sm text-slate-700 hover:text-blue-600"
+                            >Save {ps.label}</button>
+                            <button
+                                onClick={() => applyManualPreset(ps.key)}
+                                disabled={!manualPresets[ps.key]}
+                                className={`px-3 py-1.5 rounded-xl text-[10px] font-black uppercase transition-all ${manualPresets[ps.key] ? 'text-slate-500 hover:text-slate-800' : 'opacity-40 cursor-not-allowed text-slate-400'}`}
+                            >Apply {ps.label}</button>
+                            <button
+                                onClick={() => clearManualPreset(ps.key)}
+                                disabled={!manualPresets[ps.key]}
+                                className={`px-3 py-1.5 rounded-xl text-[10px] font-black uppercase transition-all ${manualPresets[ps.key] ? 'text-slate-400 hover:text-red-600' : 'opacity-40 cursor-not-allowed text-slate-300'}`}
+                            >Clear {ps.label}</button>
+                        </div>
+                    ))}
                 </div>
                 
                 {hasProcessedImages && (
@@ -330,7 +454,25 @@ window.App = () => {
                 scale={editorScale}
                 onScaleChange={setEditorScale}
                 initialRotation={(currentImage.configs && currentImage.configs[0] && typeof currentImage.configs[0].rotation === 'number') ? currentImage.configs[0].rotation : (lastUsedConfigs[0]?.rotation || 0)}
-                onRotationChange={(rot) => setLastUsedConfigs(prev => prev.map(c => ({ ...c, rotation: rot })))}
+                onRotationChange={(rot) => {
+                    setLastUsedConfigs(prev => prev.map(c => ({ ...c, rotation: rot })));
+                }}
+                onModeChange={(newMode) => {
+                    setQueue(prev => {
+                        const next = [...prev];
+                        if (next[currentIndex]) next[currentIndex] = { ...next[currentIndex], mode: newMode };
+                        return next;
+                    });
+                }}
+                onPointsChange={(pts) => {
+                    setQueue(prev => {
+                        const next = [...prev];
+                        if (next[currentIndex]) next[currentIndex] = { ...next[currentIndex], points: pts };
+                        return next;
+                    });
+                    setLastUsedPoints(pts);
+                }}
+                flashKey={presetFlashKey}
                 onProcess={handleProcess} 
                 onCancel={requestAbortSession} 
                 />
@@ -374,6 +516,14 @@ window.App = () => {
             </div>
         )}
 
+        {toast && (
+            <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[250]">
+                <div className="bg-slate-900 text-white px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest shadow-2xl border border-slate-700">
+                    {toast.text}
+                </div>
+            </div>
+        )}
+
         {showExportSettings && !isExporting && (
             <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-[150] flex items-center justify-center p-4 animation-in fade-in duration-200">
                 <div className="bg-white rounded-3xl p-10 max-w-md w-full shadow-2xl text-center border border-slate-200">
@@ -391,7 +541,7 @@ window.App = () => {
                                 className="py-4 bg-slate-50 hover:bg-blue-50 border border-slate-200 hover:border-blue-200 rounded-2xl transition-all group"
                             >
                                 <span className="block text-xl font-black text-slate-700 group-hover:text-blue-600 mb-1">{sz === 'NONE' ? 'Original' : sz}</span>
-                                <span className="block text-[10px] uppercase font-bold text-slate-400 tracking-wider">{sz === 'NONE' ? 'No Resize' : 'Standard PDF'}</span>
+                                <span className="block text-[10px] uppercase font-bold text-slate-400 tracking-wider">{sz === 'NONE' ? 'No Resize' : 'Standard'}</span>
                             </button>
                         ))}
                     </div>

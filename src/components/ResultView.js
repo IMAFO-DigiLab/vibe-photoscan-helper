@@ -23,8 +23,7 @@ const ControlPanel = ({ config, onChange, label, onReset }) => {
                 <div className="bg-slate-100 p-1 rounded-xl border border-slate-200">
                     {[
                         { key: 'BW', label: 'B&W' },
-                        { key: 'GRAY', label: 'Grayscale' },
-                        { key: 'COLOR', label: 'Color' }
+                        { key: 'GRAY', label: 'Grayscale' }
                     ].map(m => (
                         <button key={m.key}
                             onClick={() => onChange({ ...config, colorMode: m.key })}

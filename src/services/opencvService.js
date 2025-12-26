@@ -41,61 +41,7 @@
             ? config.colorMode
             : (config.isGrayscale ? 'GRAY' : 'BW');
 
-        // COLOR mode: operate on color image (RGB), CLAHE on L channel, optional denoise, sharpen
-        if (mode === 'COLOR') {
-            const rgb = new cv.Mat();
-            cv.cvtColor(processed, rgb, cv.COLOR_RGBA2RGB);
-
-            let work = rgb;
-
-            if (config.useClahe) {
-                const lab = new cv.Mat();
-                cv.cvtColor(rgb, lab, cv.COLOR_RGB2Lab);
-                const channels = new cv.MatVector();
-                cv.split(lab, channels);
-                const l = channels.get(0);
-                const a = channels.get(1);
-                const b = channels.get(2);
-                const clahe = new cv.CLAHE(2.0, new cv.Size(8, 8));
-                clahe.apply(l, l);
-                clahe.delete();
-                const merged = new cv.Mat();
-                const mergedVec = new cv.MatVector();
-                mergedVec.push_back(l); mergedVec.push_back(a); mergedVec.push_back(b);
-                cv.merge(mergedVec, merged);
-                const backToRgb = new cv.Mat();
-                cv.cvtColor(merged, backToRgb, cv.COLOR_Lab2RGB);
-
-                // cleanup
-                lab.delete(); channels.delete(); l.delete(); a.delete(); b.delete(); merged.delete(); mergedVec.delete();
-
-                work.delete();
-                work = backToRgb;
-            }
-
-            if (config.denoise > 0) {
-                const dst = new cv.Mat();
-                const d = 5 + (config.denoise * 2);
-                cv.bilateralFilter(work, dst, d, 75, 75, cv.BORDER_DEFAULT);
-                work.delete();
-                work = dst;
-            }
-
-            let sharpened = work;
-            if (config.sharpening > 0) {
-                const shp = applySharpening(work, config.sharpening);
-                sharpened.delete?.();
-                sharpened = shp;
-            } else {
-                sharpened = work.clone();
-            }
-
-            // Convert back to RGBA for consistent downstream handling
-            const rgba = new cv.Mat();
-            cv.cvtColor(sharpened, rgba, cv.COLOR_RGB2RGBA);
-            work.delete(); sharpened.delete(); rgb.delete();
-            return rgba;
-        }
+        // Color mode removed: operate only in GRAY/BW
 
         // GRAY/BW pipeline: start from grayscale
         const gray = new cv.Mat();
