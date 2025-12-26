@@ -93,6 +93,20 @@ window.ScannerEditor = ({
         }
     }, [rotation]);
 
+    const handleAutoDetect = useCallback(() => {
+        if (!imgElement) return;
+        
+        const detected = window.opencvService?.detectDocument(imgElement, mode);
+        const expectedPoints = mode === 'SINGLE' ? 4 : 6;
+        
+        if (detected && detected.length === expectedPoints) {
+            setPoints(detected);
+            if (typeof onPointsChange === 'function') onPointsChange(detected);
+        } else {
+            alert('Could not detect document automatically. Please adjust corners manually.');
+        }
+    }, [imgElement, mode, onPointsChange]);
+
     const getRotatedDimensions = (w, h, rot) => {
         const r = (rot % 360 + 360) % 360;
         if (r === 90 || r === 270) return { w: h, h: w };
@@ -456,6 +470,7 @@ window.ScannerEditor = ({
             <div className="mt-8 flex flex-col sm:flex-row justify-between items-center gap-4">
             <button type="button" onClick={onCancel} className="px-8 py-4 text-slate-400 font-black text-xs uppercase tracking-widest hover:text-slate-600 transition-colors">Cancel Batch</button>
             <div className="flex gap-4 w-full sm:w-auto">
+                <button type="button" onClick={handleAutoDetect} className="flex-1 sm:flex-none px-8 py-4 bg-green-600 text-white rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-green-700 transition-all">Auto-Detect</button>
                 <button type="button" onClick={() => { setPoints([]); if (typeof onPointsChange === 'function') onPointsChange([]); }} className="flex-1 sm:flex-none px-8 py-4 bg-slate-100 text-slate-600 rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-slate-200">Reset</button>
                 <button type="button" onClick={() => onProcess(points, mode, rotation)} className="flex-1 sm:flex-none px-12 py-4 bg-blue-600 text-white rounded-2xl font-black text-sm uppercase tracking-[0.2em] shadow-2xl shadow-blue-200 hover:bg-blue-700 transition-all">Process Scan</button>
             </div>

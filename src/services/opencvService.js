@@ -229,10 +229,191 @@
         return results;
     };
 
+    const detectDocument = (imageElement, mode = 'SINGLE') => {
+        if (!isOpenCVLoaded()) {
+            console.log('OpenCV not loaded');
+            return null;
+        }
+        
+        try {
+            const src = cv.imread(imageElement);
+            const gray = new cv.Mat();
+            const blurred = new cv.Mat();
+            const edges = new cv.Mat();
+            
+            // Convert to grayscale and blur
+            cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
+            cv.GaussianBlur(gray, blurred, new cv.Size(5, 5), 0);
+            
+            // Edge detection
+            cv.Canny(blurred, edges, 50, 150);
+            
+            // Find contours
+            const contours = new cv.MatVector();
+            const hierarchy = new cv.Mat();
+            cv.findContours(edges, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
+            
+            console.log('Found contours:', contours.size());
+            
+            let result = null;
+            
+            if (mode === 'SINGLE') {
+                let bestQuad = null;
+                let maxArea = 0;
+                const imgArea = src.cols * src.rows;
+                const minArea = imgArea * 0.05; // Lowered to 5% instead of 10%
+                
+                console.log('Image area:', imgArea, 'Min area threshold:', minArea);
+                
+                // Look for the largest quadrilateral
+                for (let i = 0; i < contours.size(); i++) {
+                    const contour = contours.get(i);
+                    const area = cv.contourArea(contour);
+                    
+                    // Skip tiny contours early
+                    if (area < minArea) {
+                        contour.delete();
+                        continue;
+                    }
+                    
+                    const peri = cv.arcLength(contour, true);
+                    const approx = new cv.Mat();
+                    
+                    // Try multiple epsilon values for approximation
+                    let foundQuad = false;
+                    for (const epsilon of [0.02, 0.03, 0.04, 0.05]) {
+                        cv.approxPolyDP(contour, approx, epsilon * peri, true);
+                        
+                        if (approx.rows === 4) {
+                            if (area > maxArea) {
+                                maxArea = area;
+                                
+                                // Extract the 4 corners and convert to normalized coordinates
+                                const pts = [];
+                                for (let j = 0; j < 4; j++) {
+                                    pts.push({
+                                        x: approx.data32S[j * 2] / src.cols,
+                                        y: approx.data32S[j * 2 + 1] / src.rows
+                                    });
+                                }
+                                
+                                console.log('Found quadrilateral with epsilon:', epsilon, 'area:', area, 'points:', pts);
+                                
+                                // Order points: TL, TR, BR, BL
+                                // Sort by y-coordinate to get top and bottom pairs
+                                pts.sort((a, b) => a.y - b.y);
+                                const top = [pts[0], pts[1]].sort((a, b) => a.x - b.x);
+                                const bottom = [pts[2], pts[3]].sort((a, b) => a.x - b.x);
+                                
+                                bestQuad = [
+                                    top[0],      // TL
+                                    top[1],      // TR
+                                    bottom[1],   // BR
+                                    bottom[0]    // BL
+                                ];
+                                foundQuad = true;
+                            }
+                            break; // Found a quad with this epsilon, no need to try others
+                        }
+                    }
+                    
+                    approx.delete();
+                    contour.delete();
+                }
+            
+                result = bestQuad;
+                console.log('SINGLE mode result:', result, 'Max area found:', maxArea);
+            } else if (mode === 'DOUBLE') {
+                // For DOUBLE mode, find the largest rectangle and split it down the middle
+                let bestQuad = null;
+                let maxArea = 0;
+                const imgArea = src.cols * src.rows;
+                const minArea = imgArea * 0.05;
+                
+                for (let i = 0; i < contours.size(); i++) {
+                    const contour = contours.get(i);
+                    const area = cv.contourArea(contour);
+                    
+                    if (area < minArea) {
+                        contour.delete();
+                        continue;
+                    }
+                    
+                    const peri = cv.arcLength(contour, true);
+                    const approx = new cv.Mat();
+                    
+                    // Try multiple epsilon values
+                    for (const epsilon of [0.02, 0.03, 0.04, 0.05]) {
+                        cv.approxPolyDP(contour, approx, epsilon * peri, true);
+                        
+                        if (approx.rows === 4) {
+                            if (area > maxArea) {
+                                maxArea = area;
+                                
+                                const pts = [];
+                                for (let j = 0; j < 4; j++) {
+                                    pts.push({
+                                        x: approx.data32S[j * 2] / src.cols,
+                                        y: approx.data32S[j * 2 + 1] / src.rows
+                                    });
+                                }
+                                
+                                console.log('DOUBLE mode found quadrilateral with area:', area, 'points:', pts);
+                                
+                                // Order points: TL, TR, BR, BL
+                                pts.sort((a, b) => a.y - b.y);
+                                const top = [pts[0], pts[1]].sort((a, b) => a.x - b.x);
+                                const bottom = [pts[2], pts[3]].sort((a, b) => a.x - b.x);
+                                
+                                bestQuad = [
+                                    top[0],      // TL
+                                    top[1],      // TR
+                                    bottom[1],   // BR
+                                    bottom[0]    // BL
+                                ];
+                            }
+                            break;
+                        }
+                    }
+                    
+                    approx.delete();
+                    contour.delete();
+                }
+                
+                if (bestQuad) {
+                    // Split the rectangle down the middle to create 6 points for DOUBLE mode
+                    const spineTopX = (bestQuad[0].x + bestQuad[1].x) / 2;
+                    const spineTopY = (bestQuad[0].y + bestQuad[1].y) / 2;
+                    const spineBottomX = (bestQuad[3].x + bestQuad[2].x) / 2;
+                    const spineBottomY = (bestQuad[3].y + bestQuad[2].y) / 2;
+                    
+                    // Return 6 points: Left TL, Spine Top, Right TR, Right BR, Spine Bottom, Left BL
+                    result = [
+                        bestQuad[0],                                    // Left TL
+                        { x: spineTopX, y: spineTopY },                // Spine Top
+                        bestQuad[1],                                    // Right TR
+                        bestQuad[2],                                    // Right BR
+                        { x: spineBottomX, y: spineBottomY },          // Spine Bottom
+                        bestQuad[3]                                     // Left BL
+                    ];
+                    console.log('DOUBLE mode result:', result);
+                }
+            }
+            hierarchy.delete();
+            
+            console.log('Final result:', result);
+            return result;
+        } catch (error) {
+            console.error('Error in detectDocument:', error);
+            return null;
+        }
+    };
+
     // Expose to window
     window.opencvService = {
         isOpenCVLoaded,
         waitForOpenCV,
-        processDocument
+        processDocument,
+        detectDocument
     };
 })();
