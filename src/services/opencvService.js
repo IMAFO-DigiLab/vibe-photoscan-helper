@@ -131,7 +131,7 @@
         return { w: Math.round(targetWidth), h: Math.round(targetHeight) };
     };
 
-    const runPerspectiveWarp = (src, quad, config, normSize) => {
+    const runPerspectiveWarp = (src, quad, config, normSize, format = 'jpg', quality = 0.92) => {
         if (!quad || quad.length < 4) return '';
         
         const { w: geomWidth, h: geomHeight } = calculateTargetDimensions(quad, src.cols, src.rows);
@@ -189,7 +189,14 @@
 
         const resultCanvas = document.createElement('canvas');
         cv.imshow(resultCanvas, finalMat);
-        const dataUrl = resultCanvas.toDataURL('image/png');
+        
+        // Use format and quality parameters
+        let dataUrl;
+        if (format === 'png') {
+            dataUrl = resultCanvas.toDataURL('image/png');
+        } else {
+            dataUrl = resultCanvas.toDataURL('image/jpeg', quality);
+        }
         
         warpDst.delete(); srcCoords.delete(); dstCoords.delete(); M.delete(); enhanced.delete();
         if (finalMat !== rotated) finalMat.delete(); 
@@ -204,7 +211,9 @@
         mode,
         configs,
         _unusedRedactions = [], 
-        normSize = 'NONE'
+        normSize = 'NONE',
+        format = 'jpg',
+        quality = 0.92
     ) => {
         if (!isOpenCVLoaded()) throw new Error("OpenCV not loaded");
 
@@ -214,13 +223,13 @@
 
         if (mode === 'SINGLE' && corners.length >= 4) {
             const config = configs[0];
-            const res = runPerspectiveWarp(src, corners, config, normSize);
+            const res = runPerspectiveWarp(src, corners, config, normSize, format, quality);
             if (res) results.push(res);
         } else if (mode === 'DOUBLE' && corners.length >= 6) {
             const leftQuad = [corners[0], corners[1], corners[4], corners[5]];
             const rightQuad = [corners[1], corners[2], corners[3], corners[4]];
-            const resL = runPerspectiveWarp(src, leftQuad, configs[0], normSize);
-            const resR = runPerspectiveWarp(src, rightQuad, configs[1], normSize);
+            const resL = runPerspectiveWarp(src, leftQuad, configs[0], normSize, format, quality);
+            const resR = runPerspectiveWarp(src, rightQuad, configs[1], normSize, format, quality);
             if (resL) results.push(resL);
             if (resR) results.push(resR);
         }

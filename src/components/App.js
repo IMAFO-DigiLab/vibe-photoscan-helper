@@ -45,6 +45,10 @@ window.App = () => {
     // Zoom States
     const [editorScale, setEditorScale] = useState(1);
 
+    // Export format and quality
+    const [exportFormat, setExportFormat] = useState('jpg'); // 'jpg' or 'png'
+    const [jpegQuality, setJpegQuality] = useState(0.92); // 0.0 to 1.0
+
     // Toast notifications
     const [toast, setToast] = useState(null); // { text: string } | null
     const showToast = useCallback((text) => {
@@ -265,13 +269,16 @@ window.App = () => {
                     item.mode,
                     item.configs,
                     [],
-                    targetSize
+                    targetSize,
+                    exportFormat,
+                    jpegQuality
                 );
 
                 newResults.forEach((dataUrl, idx) => {
                     const base64Data = dataUrl.split(',')[1];
                     const suffix = item.mode === 'DOUBLE' ? (idx === 0 ? '-left' : '-right') : `-${idx+1}`;
-                    zip.file(`${item.name}${suffix}.png`, base64Data, { base64: true });
+                    const extension = exportFormat === 'png' ? 'png' : 'jpg';
+                    zip.file(`${item.name}${suffix}.${extension}`, base64Data, { base64: true });
                 });
             }
 
@@ -531,7 +538,52 @@ window.App = () => {
                     <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
                     </div>
                     <h3 className="text-2xl font-black text-slate-900 mb-2">Download Images</h3>
-                    <p className="text-slate-500 mb-8 font-medium text-sm">Select a page size format to apply to all images in the export.</p>
+                    <p className="text-slate-500 mb-6 font-medium text-sm">Select a page size format to apply to all images in the export.</p>
+                    
+                    {/* Export Format Selection */}
+                    <div className="mb-6">
+                        <label className="block text-xs font-black uppercase text-slate-400 mb-3 tracking-widest">Format</label>
+                        <div className="flex gap-2 justify-center">
+                            <button
+                                onClick={() => setExportFormat('jpg')}
+                                className={`px-6 py-3 rounded-xl font-black text-xs uppercase transition-all ${
+                                    exportFormat === 'jpg' 
+                                        ? 'bg-blue-600 text-white shadow-lg' 
+                                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                                }`}
+                            >JPG</button>
+                            <button
+                                onClick={() => setExportFormat('png')}
+                                className={`px-6 py-3 rounded-xl font-black text-xs uppercase transition-all ${
+                                    exportFormat === 'png' 
+                                        ? 'bg-blue-600 text-white shadow-lg' 
+                                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                                }`}
+                            >PNG</button>
+                        </div>
+                    </div>
+                    
+                    {/* JPEG Quality Slider */}
+                    {exportFormat === 'jpg' && (
+                        <div className="mb-6">
+                            <label className="block text-xs font-black uppercase text-slate-400 mb-2 tracking-widest">
+                                JPEG Quality: {Math.round(jpegQuality * 100)}%
+                            </label>
+                            <input
+                                type="range"
+                                min="0.5"
+                                max="1.0"
+                                step="0.05"
+                                value={jpegQuality}
+                                onChange={(e) => setJpegQuality(parseFloat(e.target.value))}
+                                className="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
+                            />
+                            <div className="flex justify-between text-[9px] text-slate-400 font-bold uppercase mt-1">
+                                <span>Smaller</span>
+                                <span>Better</span>
+                            </div>
+                        </div>
+                    )}
                     
                     <div className="grid grid-cols-2 gap-3 mb-8">
                         {['NONE', 'A4', 'A3', 'A5'].map(sz => (

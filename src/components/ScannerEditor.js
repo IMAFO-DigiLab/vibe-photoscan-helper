@@ -18,7 +18,7 @@ window.ScannerEditor = ({
     onCancel 
 }) => {
     const { useRef, useState, useEffect, useCallback } = window.React;
-    const { ZoomIn, ZoomOut, RotateCcw } = window.lucideReact || {};
+    const { ZoomIn, ZoomOut, RotateCcw, RotateCw } = window.lucideReact || {}; 
 
     const containerRef = useRef(null);
     const canvasRef = useRef(null);
@@ -33,6 +33,7 @@ window.ScannerEditor = ({
     const [draggingEdge, setDraggingEdge] = useState(null); // [i, j]
     const [lastMousePos, setLastMousePos] = useState(null); // { mx, my }
     const [hoverEdge, setHoverEdge] = useState(null); // edge under cursor for visual cue
+    const [hoverCorner, setHoverCorner] = useState(null); // corner under cursor for visual cue
 
     const labelsMap = {
         SINGLE: ["Top-Left", "Top-Right", "Bottom-Right", "Bottom-Left"],
@@ -227,9 +228,12 @@ window.ScannerEditor = ({
 
         points.forEach((p, i) => {
             const cp = imgToCanvas(p);
+            const isHovered = i === hoverCorner;
+            const radius = i === draggingIdx ? 20 : (isHovered ? 18 : (flashActive ? 18 : 16));
+            const fillColor = flashActive ? '#22c55e' : (i === draggingIdx ? '#fbbf24' : (isHovered ? '#60a5fa' : '#3b82f6'));
             ctx.beginPath();
-            ctx.arc(cp.x, cp.y, i === draggingIdx ? 20 : (flashActive ? 18 : 16), 0, Math.PI * 2);
-            ctx.fillStyle = flashActive ? '#22c55e' : (i === draggingIdx ? '#fbbf24' : '#3b82f6');
+            ctx.arc(cp.x, cp.y, radius, 0, Math.PI * 2);
+            ctx.fillStyle = fillColor;
             ctx.fill();
             ctx.strokeStyle = '#fff';
             ctx.lineWidth = 4;
@@ -272,7 +276,7 @@ window.ScannerEditor = ({
             const cp = imgToCanvas(p);
             return Math.hypot(cp.x - mx, cp.y - my) < 30;
         });
-        if (idx !== -1) { setDraggingIdx(idx); return; }
+        if (idx !== -1) { setDraggingIdx(idx); if (canvasRef.current) canvasRef.current.style.cursor = 'grabbing'; setHoverCorner(null); return; }
 
         // Edge hit-test
         const dp = points.map(imgToCanvas);
@@ -295,6 +299,13 @@ window.ScannerEditor = ({
         if (hit) {
             setDraggingEdge(hit);
             setLastMousePos({ mx, my });
+            // set appropriate cursor based on edge orientation
+            const dp = points.map(imgToCanvas);
+            const [iEdge, jEdge] = hit;
+            const a = dp[iEdge], b = dp[jEdge];
+            const dx = b.x - a.x, dy = b.y - a.y;
+            const isHorizontal = Math.abs(dx) > Math.abs(dy);
+            if (canvasRef.current) canvasRef.current.style.cursor = isHorizontal ? 'ns-resize' : 'ew-resize';
         }
     };
 
@@ -304,6 +315,33 @@ window.ScannerEditor = ({
         const rect = canvasRef.current.getBoundingClientRect();
         const mx = (e.clientX - rect.left) * (canvasRef.current.width / rect.width);
         const my = (e.clientY - rect.top) * (canvasRef.current.height / rect.height);
+
+        const rad = rotation * Math.PI / 180;
+        const cos = Math.cos(rad);
+        const sin = Math.sin(rad);
+        // Helper: transform normalized image point to canvas space
+        const imgToCanvas = (p) => {
+            const vx = (p.x - 0.5) * drawW;
+            const vy = (p.y - 0.5) * drawH;
+            const rx = vx * cos - vy * sin;
+            const ry = vx * sin + vy * cos;
+            return { x: canvasW/2 + rx, y: canvasH/2 + ry };
+        };
+
+        // Corner hover detection (gives priority to corners)
+        if (points && points.length === maxPoints) {
+            const cornerIdx = points.findIndex(p => {
+                const cp = imgToCanvas(p);
+                return Math.hypot(cp.x - mx, cp.y - my) < 24;
+            });
+            if (cornerIdx !== -1 && !draggingEdge && draggingIdx === null) {
+                if (hoverCorner !== cornerIdx) setHoverCorner(cornerIdx);
+                if (canvasRef.current) canvasRef.current.style.cursor = 'grab';
+                return;
+            } else {
+                if (hoverCorner !== null) setHoverCorner(null);
+            }
+        }
 
         // Dragging a single corner
         if (draggingIdx !== null) {
@@ -348,24 +386,17 @@ window.ScannerEditor = ({
             if (typeof onPointsChange === 'function') onPointsChange(newPoints);
             setLastMousePos({ mx, my });
 
-            // Cursor feedback while dragging an edge
-            canvasRef.current.style.cursor = 'grabbing';
+            // Cursor feedback while dragging an edge: show horizontal/vertical resize
+            const dp = points.map(imgToCanvas);
+            const [iEdge, jEdge] = draggingEdge;
+            const a = dp[iEdge], b = dp[jEdge];
+            const edgeDx = b.x - a.x, edgeDy = b.y - a.y;
+            const isHorizontal = Math.abs(edgeDx) > Math.abs(edgeDy);
+            canvasRef.current.style.cursor = isHorizontal ? 'ns-resize' : 'ew-resize';
             return;
         }
 
         // Hover feedback: show grab cursor when near an edge
-        const rad = rotation * Math.PI / 180;
-        const cos = Math.cos(rad);
-        const sin = Math.sin(rad);
-
-        const imgToCanvas = (p) => {
-            const vx = (p.x - 0.5) * drawW;
-            const vy = (p.y - 0.5) * drawH;
-            const rx = vx * cos - vy * sin;
-            const ry = vx * sin + vy * cos;
-            return { x: canvasW/2 + rx, y: canvasH/2 + ry };
-        };
-
         const dp = points.map(imgToCanvas);
         const edges = [];
         for (let i = 0; i < dp.length; i++) edges.push([i, (i + 1) % dp.length]);
@@ -384,7 +415,12 @@ window.ScannerEditor = ({
         const nearEdge = edges.find(([i, j]) => distToSeg({ x: mx, y: my }, dp[i], dp[j]) < 20);
         if (nearEdge) {
             setHoverEdge(nearEdge);
-            canvasRef.current.style.cursor = 'grab';
+            // set cursor orientation based on edge vector
+            const [iEdge, jEdge] = nearEdge;
+            const a = dp[iEdge], b = dp[jEdge];
+            const edgeDx = b.x - a.x, edgeDy = b.y - a.y;
+            const isHorizontal = Math.abs(edgeDx) > Math.abs(edgeDy);
+            canvasRef.current.style.cursor = isHorizontal ? 'ns-resize' : 'ew-resize';
         } else {
             if (hoverEdge) setHoverEdge(null);
             canvasRef.current.style.cursor = 'crosshair';
@@ -395,6 +431,7 @@ window.ScannerEditor = ({
         setDraggingIdx(null);
         setDraggingEdge(null);
         setLastMousePos(null);
+        setHoverCorner(null);
         if (canvasRef.current) canvasRef.current.style.cursor = 'crosshair';
     };
 
@@ -421,8 +458,11 @@ window.ScannerEditor = ({
                         {ZoomIn ? <ZoomIn size={16} strokeWidth={3} /> : <span>+</span>}
                     </button>
                     <div className="w-px h-4 bg-slate-300 mx-1"></div>
-                    <button onClick={() => setRotation(r => (r + 90) % 360)} className="p-2.5 hover:bg-white hover:text-blue-600 rounded-xl transition-all text-slate-500">
-                        {RotateCcw ? <RotateCcw size={16} strokeWidth={3} /> : <span>R</span>}
+                    <button onClick={() => setRotation(r => (r - 90 + 360) % 360)} title="Rotate left" className="p-2.5 hover:bg-white hover:text-blue-600 rounded-xl transition-all text-slate-500">
+                        {RotateCcw ? <RotateCcw size={16} strokeWidth={3} /> : <span>⟲</span>}
+                    </button>
+                    <button onClick={() => setRotation(r => (r + 90) % 360)} title="Rotate right" className="p-2.5 hover:bg-white hover:text-blue-600 rounded-xl transition-all text-slate-500">
+                        {RotateCw ? <RotateCw size={16} strokeWidth={3} /> : <span>⟳</span>}
                     </button>
                 </div>
                 
@@ -470,7 +510,9 @@ window.ScannerEditor = ({
             <div className="mt-8 flex flex-col sm:flex-row justify-between items-center gap-4">
             <button type="button" onClick={onCancel} className="px-8 py-4 text-slate-400 font-black text-xs uppercase tracking-widest hover:text-slate-600 transition-colors">Cancel Batch</button>
             <div className="flex gap-4 w-full sm:w-auto">
-                <button type="button" onClick={handleAutoDetect} className="flex-1 sm:flex-none px-8 py-4 bg-green-600 text-white rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-green-700 transition-all">Auto-Detect</button>
+                <button type="button" onClick={handleAutoDetect} className="flex-1 sm:flex-none px-8 py-4 bg-green-600 text-white rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-green-700 transition-all">
+                    Auto-Detect
+                </button>
                 <button type="button" onClick={() => { setPoints([]); if (typeof onPointsChange === 'function') onPointsChange([]); }} className="flex-1 sm:flex-none px-8 py-4 bg-slate-100 text-slate-600 rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-slate-200">Reset</button>
                 <button type="button" onClick={() => onProcess(points, mode, rotation)} className="flex-1 sm:flex-none px-12 py-4 bg-blue-600 text-white rounded-2xl font-black text-sm uppercase tracking-[0.2em] shadow-2xl shadow-blue-200 hover:bg-blue-700 transition-all">Process Scan</button>
             </div>
