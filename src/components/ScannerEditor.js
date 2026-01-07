@@ -65,8 +65,30 @@ window.ScannerEditor = ({
         }
     }, [initialPoints]);
 
-    // Sync mode when parent changes it
+    // Sync mode when parent changes it and convert points between SINGLE/DOUBLE gracefully
     useEffect(() => {
+        // If switching to DOUBLE and we have 4-point rectangle, create 6-point split (spine between top edge and bottom edge)
+        if (initialMode === 'DOUBLE' && points && points.length === 4) {
+            const [s0, s1, s2, s3] = points; // TL, TR, BR, BL
+            const spineTop = { x: (s0.x + s1.x) / 2, y: (s0.y + s1.y) / 2 };
+            const spineBottom = { x: (s3.x + s2.x) / 2, y: (s3.y + s2.y) / 2 };
+            const converted = [s0, spineTop, s1, s2, spineBottom, s3];
+            setMode('DOUBLE');
+            setPoints(converted);
+            if (typeof onPointsChange === 'function') onPointsChange(converted);
+            return;
+        }
+
+        // If switching to SINGLE and we have 6-point rectangle, collapse to 4 corners
+        if (initialMode === 'SINGLE' && points && points.length === 6) {
+            // pick corners: TL, TR, BR, BL -> indices 0,2,3,5
+            const converted = [points[0], points[2], points[3], points[5]];
+            setMode('SINGLE');
+            setPoints(converted);
+            if (typeof onPointsChange === 'function') onPointsChange(converted);
+            return;
+        }
+
         setMode(initialMode);
     }, [initialMode]);
 
